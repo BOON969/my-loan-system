@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
-from datetime import datetime
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="My Loan System", layout="wide")
 
@@ -27,12 +27,15 @@ LANGUAGES = {
         "error_load": "Error loading data.",
         "add_customer": "Add Customer",
         "name": "Name",
+        "phone": "Phone No",
         "ic": "IC No",
         "amount": "Total Amount",
         "fee": "Fee",
         "interest": "Interest",
         "actual_get": "Actual Get",
-        "repay_method": "Repayment",
+        "loan_remark": "Note: Actual Get / Repayment",
+        "repay_method": "Repayment Method",
+        "repay_remark": "Repayment Note",
         "weekly": "Weekly",
         "monthly": "Monthly",
         "who": "Who Issued",
@@ -51,7 +54,24 @@ LANGUAGES = {
         "exp_cat": "Category",
         "exp_amt": "Amount",
         "exp_remark": "Remark",
-        "exp_saved": "Expense Saved"
+        "exp_saved": "Expense Saved",
+        "due_today": "Due Today",
+        "mark_paid": "Mark as Paid ✅",
+        "overdue": "Overdue (Penalty Needed)",
+        "days_overdue": "Days Overdue",
+        "add_penalty": "Add Penalty",
+        "penalty_amt": "Penalty Amount",
+        "penalty_added": "Penalty Added!",
+        "delete_loan": "Delete Loan",
+        "delete_confirm": "Are you sure? This cannot be undone.",
+        "deleted": "Loan Deleted",
+        "fin_summary": "Financial Summary (This Month)",
+        "total_income": "Total Income",
+        "total_loaned": "Total Loaned",
+        "total_int": "Total Interest",
+        "total_penalty": "Total Penalty",
+        "total_exp": "Total Expenses",
+        "net_profit": "Net Profit"
     },
     "中文": {
         "title": "系统登录",
@@ -72,12 +92,15 @@ LANGUAGES = {
         "error_load": "加载数据失败",
         "add_customer": "录入新单",
         "name": "姓名",
+        "phone": "电话号码",
         "ic": "IC/证件号",
         "amount": "总数 (Total)",
         "fee": "手续费",
         "interest": "利息",
         "actual_get": "实得 (Actual)",
+        "loan_remark": "备注: 到手/需还",
         "repay_method": "还款方式",
+        "repay_remark": "还款方式备注",
         "weekly": "按周",
         "monthly": "按月",
         "who": "谁出 (Who)",
@@ -96,7 +119,24 @@ LANGUAGES = {
         "exp_cat": "类别",
         "exp_amt": "金额",
         "exp_remark": "备注",
-        "exp_saved": "支出已保存"
+        "exp_saved": "支出已保存",
+        "due_today": "今日到期 (Due Today)",
+        "mark_paid": "已还款 ✅",
+        "overdue": "逾期 (需罚款)",
+        "days_overdue": "逾期天数",
+        "add_penalty": "添加罚款",
+        "penalty_amt": "罚款金额",
+        "penalty_added": "罚款已添加!",
+        "delete_loan": "删除用户",
+        "delete_confirm": "确定删除吗？无法恢复。",
+        "deleted": "用户已删除",
+        "fin_summary": "本月财务概览",
+        "total_income": "总收入金额",
+        "total_loaned": "顾客贷款总金额",
+        "total_int": "总收利息金额",
+        "total_penalty": "总逾期罚款金额",
+        "total_exp": "总支出金额",
+        "total_profit": "总盈利金额"
     }
 }
 
@@ -161,12 +201,65 @@ with st.sidebar:
     st.divider()
     menu = st.radio(T['menu'], [T['dashboard'], T['new_loan'], T['repayment'], T['expenses']])
 
-# 1. Dashboard
+# 1. Dashboard (With Financial Summary)
 if menu == T['dashboard']:
     st.subheader(T['overview'])
+    
+    # --- Financial Summary (Monthly) ---
+    st.markdown("#### " + T['fin_summary'])
+    try:
+        now = datetime.now()
+        first_day = now.replace(day=1).isoformat()
+        
+        # 1. Fetch Repayments this month (Income, Interest, Penalty)
+        rep_res = supabase.table("repayments").select("*").gte("created_at", first_day).execute()
+        df_rep = pd.DataFrame(rep_res.data) if rep_res.data else pd.DataFrame(columns=["amount_paid", "interest_part", "is_penalty", "penalty_amount"])
+        
+        # Check if columns exist (for backward compatibility or new tables)
+        if "is_penalty" not in df_rep.columns: df_rep["is_penalty"] = False
+        if "penalty_amount" not in df_rep.columns: df_rep["penalty_amount"] = 0.0
+        
+        total_income = df_rep["amount_paid"].sum()
+        total_int = df_rep["interest_part"].sum()
+        # Penalty is tricky: if is_penalty=True, amount_paid is penalty. OR we track penalty_amount separately.
+        # Assuming is_penalty=True means the whole amount is penalty.
+        total_penalty = df_rep[df_rep["is_penalty"] == True]["amount_paid"].sum()
+        
+        # 2. Fetch Loans this month (Loaned Out)
+        loan_res = supabase.table("loans").select("*").gte("created_at", first_day).execute()
+        df_loans = pd.DataFrame(loan_res.data) if loan_res.data else pd.DataFrame(columns=["loan_amount"])
+        total_loaned = df_loans["loan_amount"].sum()
+        
+        # 3. Fetch Expenses this month
+        exp_res = supabase.table("expenses").select("*").gte("created_at", first_day).execute()
+        df_exp = pd.DataFrame(exp_res.data) if exp_res.data else pd.DataFrame(columns=["amount"])
+        total_exp = df_exp["amount"].sum()
+        
+        # 4. Profit
+        # Profit = Interest + Penalty - Expenses (Simple view)
+        # OR Profit = Income - Expenses (Cash flow view) - User asked for "Total Profit" usually implies Net Income.
+        # Let's use: (Interest + Penalty) - Expenses
+        total_profit = (total_int + total_penalty) - total_exp
+        
+        # Display Metrics
+        m1, m2, m3 = st.columns(3)
+        m1.metric(T['total_income'], "{:,.2f}".format(total_income))
+        m2.metric(T['total_loaned'], "{:,.2f}".format(total_loaned))
+        m3.metric(T['total_int'], "{:,.2f}".format(total_int))
+        
+        m4, m5, m6 = st.columns(3)
+        m4.metric(T['total_penalty'], "{:,.2f}".format(total_penalty))
+        m5.metric(T['total_exp'], "{:,.2f}".format(total_exp))
+        m6.metric(T['total_profit'], "{:,.2f}".format(total_profit))
+        
+        st.divider()
+        
+    except Exception as e:
+        st.error("Error loading summary: " + str(e))
+
     try:
         # Load Loans
-        res = supabase.table("loans").select("*").execute()
+        res = supabase.table("loans").select("*").neq("status", "Deleted").execute() # Filter deleted
         if res.data:
             df = pd.DataFrame(res.data)
             st.markdown("#### Loans / 贷款")
@@ -196,18 +289,25 @@ elif menu == T['new_loan']:
     with st.form("add"):
         c1, c2 = st.columns(2)
         name = c1.text_input(T['name'])
-        ic = c2.text_input(T['ic'])
+        phone = c2.text_input(T['phone']) # New: Phone
         
         c3, c4 = st.columns(2)
-        amt = c3.number_input(T['amount'], min_value=0.0)
-        fee = c4.number_input(T['fee'], min_value=0.0)
+        ic = c3.text_input(T['ic'])
         
-        c5, c6 = st.columns(2)
-        interest = c5.number_input(T['interest'], min_value=0.0)
-        actual_get = amt - fee # Auto calc logic from user code
-        c6.metric(T['actual_get'], actual_get)
+        c_amt, c_fee = st.columns(2)
+        amt = c_amt.number_input(T['amount'], min_value=0.0)
+        fee = c_fee.number_input(T['fee'], min_value=0.0)
+        
+        c_int, c_get = st.columns(2)
+        interest = c_int.number_input(T['interest'], min_value=0.0)
+        actual_get = amt - fee
+        c_get.metric(T['actual_get'], actual_get)
+        
+        # New: Remark for "Actual Get / Repay"
+        loan_remark = st.text_input(T['loan_remark'], value="Actual: {}, Repay: {}".format(actual_get, amt))
         
         method = st.selectbox(T['repay_method'], [T['weekly'], T['monthly']])
+        repay_remark = st.text_input(T['repay_remark']) # New: Repay Remark
         
         c7, c8 = st.columns(2)
         who = c7.text_input(T['who'])
@@ -215,45 +315,113 @@ elif menu == T['new_loan']:
         
         if st.form_submit_button(T['submit']):
             try:
+                # Calculate Next Due Date
+                now = datetime.now()
+                if method == T['weekly'] or method == "Weekly" or method == "按周":
+                    next_due = now + timedelta(days=7)
+                else:
+                    next_due = now + timedelta(days=30)
+                    
                 data = {
                     "name": name, 
+                    "phone": phone,
                     "ic": ic, 
                     "loan_amount": amt, 
                     "fee": fee,
                     "interest": interest,
                     "actual_get": actual_get, 
-                    "balance": amt, # Initial balance = Loan Amount
+                    "balance": amt, 
                     "repay_method": method,
                     "who_issued": who,
                     "account_no": account,
-                    "created_at": datetime.now().isoformat()
+                    "loan_remark": loan_remark,
+                    "repay_remark": repay_remark,
+                    "next_due_date": next_due.date().isoformat(),
+                    "created_at": datetime.now().isoformat(),
+                    "status": "Active"
                 }
                 supabase.table("loans").insert(data).execute()
                 st.success(T['saved'].format(name))
             except Exception as e:
                 st.error(T['save_fail'].format(e))
 
-# 3. Repayment
+# 3. Repayment (Updated with Daily Due & Overdue)
 elif menu == T['repayment']:
     st.subheader(T['repayment'])
     
-    # Fetch Active Loans
-    loans = []
+    # --- A. Daily Due & Overdue Section ---
+    st.markdown("### 📅 Status")
     try:
-        res = supabase.table("loans").select("id, name, balance").gt("balance", 0).execute()
-        loans = res.data
-    except:
-        st.error("Error fetching loans")
-    
-    if not loans:
+        # Fetch Active Loans
+        res = supabase.table("loans").select("*").neq("status", "Deleted").gt("balance", 0).execute()
+        active_loans = res.data if res.data else []
+        
+        today = datetime.now().date()
+        
+        col_due, col_over = st.columns(2)
+        
+        # 1. Due Today
+        with col_due:
+            st.markdown("#### " + T['due_today'])
+            for l in active_loans:
+                if l.get('next_due_date') == today.isoformat():
+                    c_d1, c_d2 = st.columns([3, 1])
+                    c_d1.info(f"{l['name']} (${l['balance']})")
+                    if c_d2.button(T['mark_paid'], key=f"pay_{l['id']}"):
+                         st.session_state['quick_pay_id'] = l['id'] # Store for form below
+            
+        # 2. Overdue (Past 12am check effectively means date < today)
+        with col_over:
+            st.markdown("#### " + T['overdue'])
+            for l in active_loans:
+                due_date_str = l.get('next_due_date')
+                if due_date_str:
+                    due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
+                    if due_date < today:
+                        days_late = (today - due_date).days
+                        st.error(f"{l['name']} - {days_late} {T['days_overdue']}")
+                        
+                        # Add Penalty UI
+                        with st.expander(T['add_penalty']):
+                            pen_amt = st.number_input(T['penalty_amt'], key=f"pen_{l['id']}", min_value=0.0, step=10.0)
+                            if st.button(T['submit'], key=f"btn_pen_{l['id']}"):
+                                # Update Loan (Add penalty to balance & overdue_penalty field)
+                                new_bal = l['balance'] + pen_amt
+                                new_pen = (l.get('overdue_penalty') or 0) + pen_amt
+                                supabase.table("loans").update({"balance": new_bal, "overdue_penalty": new_pen}).eq("id", l['id']).execute()
+                                # Record as Repayment (Type: Penalty) or just a Penalty Record? 
+                                # Usually penalty increases balance. Payment decreases it.
+                                # Let's just record it in repayments as a "Penalty Charge" (negative payment? No, just track it).
+                                # Actually, user said "Add Penalty". I added it to balance.
+                                st.success(T['penalty_added'])
+                                st.rerun()
+
+    except Exception as e:
+        st.error("Error checking due dates: " + str(e))
+        
+    st.divider()
+
+    # --- B. Normal Repayment Form ---
+    if not active_loans:
         st.info("No active loans found.")
     else:
-        # Create a dictionary for dropdown: "Name (Bal: 1000)" -> ID
-        loan_options = {"{} (Bal: {})".format(l['name'], l['balance']): l for l in loans}
-        selected_label = st.selectbox(T['select_cust'], list(loan_options.keys()))
+        # Pre-select if quick pay was clicked
+        loan_options = {"{} (Bal: {})".format(l['name'], l['balance']): l for l in active_loans}
+        
+        # Find index of quick_pay_id
+        index = 0
+        if 'quick_pay_id' in st.session_state:
+            for i, (k, v) in enumerate(loan_options.items()):
+                if v['id'] == st.session_state['quick_pay_id']:
+                    index = i
+                    break
+        
+        selected_label = st.selectbox(T['select_cust'], list(loan_options.keys()), index=index)
         selected_loan = loan_options[selected_label]
         
         with st.form("repay"):
+            st.markdown(f"**{selected_loan['name']}** - {selected_loan.get('repay_remark', '')}")
+            
             c1, c2 = st.columns(2)
             total_paid = c1.number_input(T['total_paid'], min_value=0.0)
             handler = c2.text_input(T['handler'], value=user_name)
@@ -262,34 +430,62 @@ elif menu == T['repayment']:
             deduct_int = c3.number_input(T['deduct_int'], min_value=0.0)
             deduct_prin = c4.number_input(T['deduct_prin'], min_value=0.0)
             
+            # Next Due Date Update
+            next_due_update = st.checkbox("Update Next Due Date?", value=True)
+            
+            # Delete Option
+            delete_user = st.checkbox(T['delete_loan'])
+            
             if st.form_submit_button(T['submit']):
-                new_balance = selected_loan['balance'] - deduct_prin
-                
-                # 1. Update Loan Balance
-                supabase.table("loans").update({"balance": new_balance}).eq("id", selected_loan['id']).execute()
-                
-                # 2. Insert Repayment Record
-                repay_data = {
-                    "loan_id": selected_loan['id'],
-                    "customer_name": selected_loan['name'],
-                    "amount_paid": total_paid,
-                    "interest_part": deduct_int,
-                    "principal_part": deduct_prin,
-                    "balance_after": new_balance,
-                    "handler": handler,
-                    "created_at": datetime.now().isoformat()
-                }
-                supabase.table("repayments").insert(repay_data).execute()
-                
-                st.success(T['repay_success'].format(new_balance))
-                # st.rerun() # Refresh to update dropdown balance
+                if delete_user:
+                    # Soft Delete
+                    supabase.table("loans").update({"status": "Deleted"}).eq("id", selected_loan['id']).execute()
+                    st.warning(T['deleted'])
+                    st.rerun()
+                else:
+                    new_balance = selected_loan['balance'] - deduct_prin
+                    
+                    # 1. Update Loan Balance & Next Due
+                    update_data = {"balance": new_balance}
+                    if next_due_update:
+                        # Add 7 days or 30 days based on method
+                        current_due_str = selected_loan.get('next_due_date')
+                        if current_due_str:
+                            current_due = datetime.strptime(current_due_str, "%Y-%m-%d")
+                            method = selected_loan.get('repay_method', '')
+                            if "Week" in method or "周" in method:
+                                new_due = current_due + timedelta(days=7)
+                            else:
+                                new_due = current_due + timedelta(days=30)
+                            update_data["next_due_date"] = new_due.date().isoformat()
+                            
+                    supabase.table("loans").update(update_data).eq("id", selected_loan['id']).execute()
+                    
+                    # 2. Insert Repayment Record
+                    repay_data = {
+                        "loan_id": selected_loan['id'],
+                        "customer_name": selected_loan['name'],
+                        "amount_paid": total_paid,
+                        "interest_part": deduct_int,
+                        "principal_part": deduct_prin,
+                        "balance_after": new_balance,
+                        "handler": handler,
+                        "created_at": datetime.now().isoformat()
+                    }
+                    supabase.table("repayments").insert(repay_data).execute()
+                    
+                    st.success(T['repay_success'].format(new_balance))
+                    if 'quick_pay_id' in st.session_state: del st.session_state['quick_pay_id']
+                    st.rerun()
 
 # 4. Expenses
 elif menu == T['expenses']:
     st.subheader(T['expenses'])
     with st.form("exp"):
-        category = st.text_input(T['exp_cat']) # e.g. Food, Transport
-        customer = st.text_input(T['select_cust'] + " (Optional)")
+        category = st.text_input(T['exp_cat']) 
+        # Removed "Select Customer" as requested
+        # customer = st.text_input(T['select_cust'] + " (Optional)") 
+        
         amount = st.number_input(T['exp_amt'], min_value=0.0)
         handler = st.text_input(T['handler'], value=user_name)
         remark = st.text_area(T['exp_remark'])
@@ -297,7 +493,7 @@ elif menu == T['expenses']:
         if st.form_submit_button(T['submit']):
             exp_data = {
                 "category": category,
-                "customer_name": customer,
+                # "customer_name": customer, # Removed
                 "amount": amount,
                 "handler": handler,
                 "remark": remark,
