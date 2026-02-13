@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# # -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
@@ -9,14 +9,17 @@ st.set_page_config(page_title="贷款管理系统 (Loan System)", layout="wide")
 # --- Hide Streamlit Style & Mobile Optimization & Deep Dark Theme ---
 hide_streamlit_style = """
             <style>
-            /* Hide Streamlit Default Elements */
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            .stDeployButton {display:none;}
-            [data-testid="stToolbar"] {visibility: hidden;}
-            [data-testid="stDecoration"] {visibility: hidden;}
-            [data-testid="stStatusWidget"] {visibility: hidden;}
+            /* Hide Streamlit Default Elements (Aggressive) */
+            #MainMenu {visibility: hidden !important;}
+            footer {visibility: hidden !important;}
+            header {visibility: hidden !important;}
+            .stDeployButton {display: none !important;}
+            [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
+            [data-testid="stDecoration"] {visibility: hidden !important;}
+            [data-testid="stStatusWidget"] {visibility: hidden !important;}
+            [data-testid="stHeader"] {display: none !important;}
+            div[data-testid="stToolbar"] {display: none !important;}
+            .viewerBadge_container__1QSob {display: none !important;}
             
             /* Deep Dark Theme Overrides */
             .stApp {
