@@ -4,10 +4,195 @@ import pandas as pd
 from supabase import create_client, Client
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="My Loan System", layout="wide")
+st.set_page_config(page_title="贷款管理系统 (Loan System)", layout="wide")
+
+# --- Hide Streamlit Style & Mobile Optimization & Deep Dark Theme ---
+hide_streamlit_style = """
+            <style>
+            /* Hide Streamlit Default Elements */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            .stDeployButton {display:none;}
+            [data-testid="stToolbar"] {visibility: hidden;}
+            [data-testid="stDecoration"] {visibility: hidden;}
+            [data-testid="stStatusWidget"] {visibility: hidden;}
+            
+            /* Deep Dark Theme Overrides */
+            .stApp {
+                background-color: #0E1117;
+                font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            }
+            div[data-testid="stSidebar"] {
+                background-color: #262730;
+                border-right: 1px solid #333;
+            }
+            
+            /* Enhanced Custom Cards for Metrics */
+            div[data-testid="stMetric"] {
+                background-color: #1E1E1E;
+                border: 1px solid #333;
+                padding: 15px;
+                border-radius: 10px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                transition: transform 0.2s;
+            }
+            div[data-testid="stMetric"]:hover {
+                transform: translateY(-2px);
+                border-color: #444;
+            }
+            
+            /* Button Styling */
+            .stButton button {
+                background: linear-gradient(to right, #2E86C1, #1B4F72);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-weight: bold;
+                transition: all 0.3s ease;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            }
+            .stButton button:hover {
+                background: linear-gradient(to right, #3498DB, #2874A6);
+                box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                transform: translateY(-1px);
+            }
+            
+            /* Input Fields */
+            .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] {
+                background-color: #0E1117;
+                border: 1px solid #444;
+                border-radius: 6px;
+                color: #FFF;
+            }
+            
+            /* Custom Cards */
+            div.css-1r6slb0.e1tzin5v2 {
+                background-color: #1E1E1E;
+                border: 1px solid #333;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            }
+            
+            /* Typography */
+            h1, h2, h3 {
+                color: #E0E0E0;
+                font-weight: 600;
+            }
+            p, label {
+                color: #B0B0B0;
+            }
+            
+            /* Mobile Optimization (Phone Version) */
+            @media (max-width: 768px) {
+                /* Make buttons larger and full width for touch */
+                .stButton button {
+                    width: 100%;
+                    padding-top: 12px;
+                    padding-bottom: 12px;
+                    font-size: 18px !important;
+                    font-weight: bold;
+                    border-radius: 12px;
+                    margin-top: 10px;
+                }
+                
+                /* Increase input height for easier tapping */
+                .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] {
+                    min-height: 50px;
+                    font-size: 16px;
+                    border-radius: 10px;
+                }
+                
+                /* Card-like styling for metrics on mobile */
+                [data-testid="stMetric"] {
+                    background-color: #1E1E1E;
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin-bottom: 10px;
+                    border: 1px solid #333;
+                }
+                
+                /* Adjust table font size */
+                .stDataFrame {
+                    font-size: 14px;
+                }
+            }
+            
+            /* General UI Polish */
+            .stMetricLabel {font-weight: bold; color: #888;}
+            .stMetricValue {color: #00D4FF;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # --- Language Config / 语言配置 ---
 LANGUAGES = {
+    "中文": {
+        "title": "系统登录",
+        "user_id": "用户 ID",
+        "password": "密码",
+        "login_btn": "登录",
+        "input_warn": "请输入 ID 和密码",
+        "unauth": "无权访问：该 ID 不在允许列表中。",
+        "login_fail": "登录失败：密码错误或系统错误",
+        "logout": "退出登录",
+        "menu": "菜单",
+        "dashboard": "数据大盘",
+        "new_loan": "新增客户",
+        "repayment": "客户还款",
+        "expenses": "杂费支出",
+        "overview": "业务概览",
+        "no_records": "暂无数据",
+        "error_load": "加载数据失败",
+        "add_customer": "录入新单",
+        "name": "姓名",
+        "phone": "电话号码",
+        "ic": "IC/证件号",
+        "amount": "总数 (Total)",
+        "fee": "手续费",
+        "interest": "利息",
+        "actual_get": "实得 (Actual)",
+        "loan_remark": "备注: 到手/需还",
+        "repay_method": "还款方式",
+        "repay_remark": "还款方式备注",
+        "weekly": "按周",
+        "monthly": "按月",
+        "who": "谁出 (Who)",
+        "account": "账号 (Ac)",
+        "submit": "提交保存",
+        "saved": "已保存: {}",
+        "save_fail": "保存失败: {}",
+        "user_label": "用户: {}",
+        "select_cust": "选择客户",
+        "total_paid": "实收总额",
+        "deduct_int": "扣利息",
+        "deduct_prin": "退母 (还本金)",
+        "handler": "经手人",
+        "new_bal": "剩余余额",
+        "repay_success": "还款成功！剩余余额: {}",
+        "exp_cat": "类别",
+        "exp_amt": "金额",
+        "exp_remark": "备注",
+        "exp_saved": "支出已保存",
+        "due_today": "今日到期 (Due Today)",
+        "mark_paid": "已还款 ✅",
+        "overdue": "逾期 (需罚款)",
+        "days_overdue": "逾期天数",
+        "add_penalty": "添加罚款",
+        "penalty_amt": "罚款金额",
+        "penalty_added": "罚款已添加!",
+        "delete_loan": "删除用户",
+        "delete_confirm": "确定删除吗？无法恢复。",
+        "deleted": "用户已删除",
+        "fin_summary": "本月财务概览",
+        "total_income": "总收入金额",
+        "total_loaned": "顾客贷款总金额",
+        "total_int": "总收利息金额",
+        "total_penalty": "总逾期罚款金额",
+        "total_exp": "总支出金额",
+        "net_profit": "总盈利金额"
+    },
     "English": {
         "title": "SYSTEM LOGIN",
         "user_id": "User ID",
@@ -72,110 +257,90 @@ LANGUAGES = {
         "total_penalty": "Total Penalty",
         "total_exp": "Total Expenses",
         "net_profit": "Net Profit"
-    },
-    "中文": {
-        "title": "系统登录",
-        "user_id": "用户 ID",
-        "password": "密码",
-        "login_btn": "登录",
-        "input_warn": "请输入 ID 和密码",
-        "unauth": "无权访问：该 ID 不在允许列表中。",
-        "login_fail": "登录失败：密码错误或系统错误",
-        "logout": "退出登录",
-        "menu": "菜单",
-        "dashboard": "数据大盘",
-        "new_loan": "新增客户",
-        "repayment": "客户还款",
-        "expenses": "杂费支出",
-        "overview": "业务概览",
-        "no_records": "暂无数据",
-        "error_load": "加载数据失败",
-        "add_customer": "录入新单",
-        "name": "姓名",
-        "phone": "电话号码",
-        "ic": "IC/证件号",
-        "amount": "总数 (Total)",
-        "fee": "手续费",
-        "interest": "利息",
-        "actual_get": "实得 (Actual)",
-        "loan_remark": "备注: 到手/需还",
-        "repay_method": "还款方式",
-        "repay_remark": "还款方式备注",
-        "weekly": "按周",
-        "monthly": "按月",
-        "who": "谁出 (Who)",
-        "account": "账号 (Ac)",
-        "submit": "提交保存",
-        "saved": "已保存: {}",
-        "save_fail": "保存失败: {}",
-        "user_label": "用户: {}",
-        "select_cust": "选择客户",
-        "total_paid": "实收总额",
-        "deduct_int": "扣利息",
-        "deduct_prin": "退母 (还本金)",
-        "handler": "经手人",
-        "new_bal": "剩余余额",
-        "repay_success": "还款成功！剩余余额: {}",
-        "exp_cat": "类别",
-        "exp_amt": "金额",
-        "exp_remark": "备注",
-        "exp_saved": "支出已保存",
-        "due_today": "今日到期 (Due Today)",
-        "mark_paid": "已还款 ✅",
-        "overdue": "逾期 (需罚款)",
-        "days_overdue": "逾期天数",
-        "add_penalty": "添加罚款",
-        "penalty_amt": "罚款金额",
-        "penalty_added": "罚款已添加!",
-        "delete_loan": "删除用户",
-        "delete_confirm": "确定删除吗？无法恢复。",
-        "deleted": "用户已删除",
-        "fin_summary": "本月财务概览",
-        "total_income": "总收入金额",
-        "total_loaned": "顾客贷款总金额",
-        "total_int": "总收利息金额",
-        "total_penalty": "总逾期罚款金额",
-        "total_exp": "总支出金额",
-        "total_profit": "总盈利金额"
     }
 }
 
 # Whitelist
 ALLOWED_USERS = ["BOON", "WILLIAM"]
 
+# --- Firewall Logic (Security) ---
+@st.cache_resource
+def get_login_tracker():
+    # Stores failed attempts: { "user_id": [timestamp1, timestamp2, ...] }
+    return {}
+
+def check_firewall(user_id):
+    tracker = get_login_tracker()
+    now = datetime.now()
+    
+    if user_id in tracker:
+        # Keep only attempts in the last 15 minutes
+        tracker[user_id] = [t for t in tracker[user_id] if now - t < timedelta(minutes=15)]
+        
+        if len(tracker[user_id]) >= 3:
+            return True, (timedelta(minutes=15) - (now - tracker[user_id][-1])).seconds // 60
+            
+    return False, 0
+
+def log_failed_attempt(user_id):
+    tracker = get_login_tracker()
+    if user_id not in tracker:
+        tracker[user_id] = []
+    tracker[user_id].append(datetime.now())
+
 # Connect DB
 try:
     supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_ANON_KEY"])
-except:
-    st.error("Key Error: Please check secrets.toml")
+except Exception as e:
+    st.error(f"Key Error: Please check secrets.toml. Detail: {e}")
     st.stop()
 
 # Session
 if "user" not in st.session_state:
     st.session_state.user = None
 if "lang" not in st.session_state:
-    st.session_state.lang = "English"
+    st.session_state.lang = "中文" # Default to Chinese
+
+def navigate_to(page):
+    st.session_state.nav_menu = page
 
 # --- Sidebar ---
 with st.sidebar:
-    st.session_state.lang = st.radio("Language / 语言", ["English", "中文"])
+    # Changed default selection to Chinese first
+    st.session_state.lang = st.radio("Language / 语言", ["中文", "English"])
 
 T = LANGUAGES[st.session_state.lang]
 
 # --- Login ---
 if not st.session_state.user:
-    st.markdown("### {}".format(T['title']))
-    col1, col2 = st.columns([1, 2])
-    with col1:
+    st.markdown(f"""
+    <div style='background-color: #1E1E1E; padding: 30px; border-radius: 15px; border: 1px solid #333; box-shadow: 0 4px 15px rgba(0,0,0,0.5); max-width: 500px; margin: auto;'>
+        <h2 style='text-align: center; color: #00D4FF;'>🔐 {T['title']}</h2>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.write("") # Spacer
         user_id = st.text_input(T['user_id'])
         password = st.text_input(T['password'], type="password")
         
-        if st.button(T['login_btn']):
+        st.write("")
+        if st.button(T['login_btn'], use_container_width=True):
             if not user_id or not password:
                 st.warning(T['input_warn'])
             else:
                 clean_id = user_id.strip().upper()
+                
+                # 1. Check Firewall
+                is_blocked, wait_time = check_firewall(clean_id)
+                if is_blocked:
+                    st.error(f"⛔ FIREWALL ACTIVATED: Too many failed attempts. Please wait {wait_time} minutes.")
+                    st.stop()
+                
+                # 2. Check Whitelist
                 if clean_id not in ALLOWED_USERS:
+                     log_failed_attempt(clean_id)
                      st.error(T['unauth'])
                 else:
                     email = "{}@myloans.com".format(clean_id)
@@ -184,6 +349,7 @@ if not st.session_state.user:
                         st.session_state.user = res.user
                         st.rerun()
                     except Exception as e:
+                        log_failed_attempt(clean_id)
                         st.error(T['login_fail'])
     st.stop()
 
@@ -199,10 +365,20 @@ with st.sidebar:
         st.rerun()
     
     st.divider()
-    menu = st.radio(T['menu'], [T['dashboard'], T['new_loan'], T['repayment'], T['expenses']])
+    # Added key for programmatic navigation
+    menu = st.radio(T['menu'], [T['dashboard'], T['new_loan'], T['repayment'], T['expenses']], key='nav_menu')
 
 # 1. Dashboard (With Financial Summary)
 if menu == T['dashboard']:
+    # --- Quick Menu for Mobile ---
+    st.markdown("### 📱 快速导航 (Quick Menu)")
+    c_nav1, c_nav2, c_nav3 = st.columns(3)
+    c_nav1.button(T['new_loan'], key="nav_home_new", on_click=navigate_to, args=(T['new_loan'],))
+    c_nav2.button(T['repayment'], key="nav_home_repay", on_click=navigate_to, args=(T['repayment'],))
+    c_nav3.button(T['expenses'], key="nav_home_exp", on_click=navigate_to, args=(T['expenses'],))
+    
+    st.divider()
+    
     st.subheader(T['overview'])
     
     # --- Financial Summary (Monthly) ---
@@ -250,7 +426,15 @@ if menu == T['dashboard']:
         m4, m5, m6 = st.columns(3)
         m4.metric(T['total_penalty'], "{:,.2f}".format(total_penalty))
         m5.metric(T['total_exp'], "{:,.2f}".format(total_exp))
-        m6.metric(T['total_profit'], "{:,.2f}".format(total_profit))
+        # Fixed Key Error here
+        m6.metric(T['net_profit'], "{:,.2f}".format(total_profit))
+        
+        st.markdown("### 📊 " + T['overview'])
+        chart_data = pd.DataFrame({
+            "Category": [T['total_income'], T['total_loaned'], T['total_exp'], T['net_profit']],
+            "Amount": [total_income, total_loaned, total_exp, total_profit]
+        })
+        st.bar_chart(chart_data.set_index("Category"))
         
         st.divider()
         
@@ -285,6 +469,9 @@ if menu == T['dashboard']:
 
 # 2. New Loan
 elif menu == T['new_loan']:
+    # Back Button
+    st.button("🔙 返回菜单 (Menu)", key='back_new_loan', on_click=navigate_to, args=(T['dashboard'],))
+        
     st.subheader(T['add_customer'])
     with st.form("add"):
         c1, c2 = st.columns(2)
@@ -347,6 +534,9 @@ elif menu == T['new_loan']:
 
 # 3. Repayment (Updated with Daily Due & Overdue)
 elif menu == T['repayment']:
+    # Back Button
+    st.button("🔙 返回菜单 (Menu)", key='back_repay', on_click=navigate_to, args=(T['dashboard'],))
+        
     st.subheader(T['repayment'])
     
     # --- A. Daily Due & Overdue Section ---
@@ -480,6 +670,9 @@ elif menu == T['repayment']:
 
 # 4. Expenses
 elif menu == T['expenses']:
+    # Back Button
+    st.button("🔙 返回菜单 (Menu)", key='back_exp', on_click=navigate_to, args=(T['dashboard'],))
+        
     st.subheader(T['expenses'])
     with st.form("exp"):
         category = st.text_input(T['exp_cat']) 
